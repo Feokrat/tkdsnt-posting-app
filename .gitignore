@@ -5,7 +5,7 @@
 *.so
 *.dylib
 *.env
-/pics
+/pics/*
 # Test binary, built with `go test -c`
 *.test
 
