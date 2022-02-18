@@ -2,15 +2,17 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	"flag"
 	"log"
 	"os"
+	"time"
+
+	"github.com/Feokrat/tkdsnt-posting-app/internal/vkPost"
 
 	"github.com/Feokrat/tkdsnt-posting-app/internal/config"
-
 	"github.com/Feokrat/tkdsnt-posting-app/pkg/database"
 
-	"github.com/Feokrat/tkdsnt-posting-app/internal/post"
+	"github.com/Feokrat/tkdsnt-posting-app/internal/downloadPost"
 )
 
 var configFile = "configs/config"
@@ -18,7 +20,10 @@ var configFile = "configs/config"
 const SOURCES_FILE = "sources.txt"
 
 func main() {
-	fmt.Println("Hello world")
+	postFlag := flag.Bool("p", false, "post downloaded")
+	downloadFlag := flag.Bool("d", false, "download from sources")
+	flag.Parse()
+
 	logger := log.New(os.Stdout, "", 0)
 
 	cfg, err := config.Init(configFile, logger)
@@ -32,19 +37,68 @@ func main() {
 	}
 	defer database.ClosePostgresDB(db)
 
-	repo := post.NewRepository(db, logger)
-	service := post.NewService(repo, logger)
+	repo := downloadPost.NewRepository(db, logger)
 
-	err = downloadPosts(service, SOURCES_FILE)
-	if err != nil {
-		logger.Fatalf("error reading source file %s, err: %s", SOURCES_FILE, err.Error())
-		return
+	if *downloadFlag {
+		err = download(repo, logger)
+		if err != nil {
+			return
+		}
 	}
 
-	err =
+	if *postFlag {
+		err = postDownloaded(repo, cfg, logger)
+		if err != nil {
+			return
+		}
+	}
 }
 
-func downloadPosts(service post.Service, filename string) error {
+func download(repo downloadPost.Repository, logger *log.Logger) error {
+	service := downloadPost.NewService(repo, logger)
+
+	err := downloadPosts(service, SOURCES_FILE)
+	if err != nil {
+		logger.Fatalf("error reading source file %s, err: %s", SOURCES_FILE, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func postDownloaded(repo downloadPost.Repository, cfg *config.Config, logger *log.Logger) error {
+	vkPostService := vkPost.NewVkPostService(cfg.Posting.GroupId, cfg.Posting.AccessToken, logger)
+
+	for {
+		downloaded, err := repo.GetLastUnposted()
+		if err != nil {
+			logger.Fatalf("error getting last not posted, err: %s", err.Error())
+			return err
+		}
+
+		if downloaded.Filenames == nil {
+			break
+		}
+
+		err = vkPostService.MakePost(downloaded.Filenames, downloaded.SourceUrl)
+		if err != nil {
+			logger.Fatalf("error posting, err: %s", err.Error())
+			return err
+		}
+
+		time.Sleep(1 * time.Second)
+
+		err = repo.SetPosted(downloaded.Id)
+		if err != nil {
+			logger.Fatalf("error making posted, err: %s", err.Error())
+			return err
+		}
+	}
+
+	return nil
+}
+
+func downloadPosts(service downloadPost.Service, filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err

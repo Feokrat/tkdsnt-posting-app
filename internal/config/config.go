@@ -2,7 +2,11 @@ package config
 
 import (
 	"log"
+	"os"
+	"strconv"
 	"strings"
+
+	"github.com/joho/godotenv"
 
 	"github.com/spf13/viper"
 )
@@ -10,6 +14,7 @@ import (
 type (
 	Config struct {
 		Postgresql PGConfig
+		Posting    Posting
 	}
 
 	PGConfig struct {
@@ -19,6 +24,11 @@ type (
 		Password string `mapstructure:"password"`
 		DBName   string `mapstructure:"dbname"`
 		SSLMode  string `mapstructure:"ssl"`
+	}
+
+	Posting struct {
+		AccessToken string `json:"access_token"`
+		GroupId     int    `json:"group_id"`
 	}
 )
 
@@ -34,7 +44,15 @@ func Init(path string, logger *log.Logger) (*Config, error) {
 		return nil, err
 	}
 
+	setFromEnv(&cfg)
+
 	return &cfg, nil
+}
+
+func setFromEnv(cfg *Config) {
+	godotenv.Load(".env")
+	cfg.Posting.AccessToken = os.Getenv("ACCESS_TOKEN")
+	cfg.Posting.GroupId, _ = strconv.Atoi(os.Getenv("GROUP_ID"))
 }
 
 func unmarshal(cfg *Config, logger *log.Logger) error {

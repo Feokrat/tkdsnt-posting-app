@@ -1,4 +1,4 @@
-package post
+package downloadPost
 
 import (
 	"errors"
@@ -43,7 +43,7 @@ func (s service) DownloadPost(sourceUrl string) ([]string, error) {
 		return nil, err
 	}
 
-	post := model.Post{
+	post := model.DownloadedPost{
 		Filenames: filenames,
 		SourceUrl: sourceUrl,
 		Posted:    false,
