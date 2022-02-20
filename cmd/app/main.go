@@ -40,7 +40,7 @@ func main() {
 	repo := downloadPost.NewRepository(db, logger)
 
 	if *downloadFlag {
-		err = download(repo, logger)
+		err = download(repo, cfg, logger)
 		if err != nil {
 			return
 		}
@@ -54,8 +54,8 @@ func main() {
 	}
 }
 
-func download(repo downloadPost.Repository, logger *log.Logger) error {
-	service := downloadPost.NewService(repo, logger)
+func download(repo downloadPost.Repository, cfg *config.Config, logger *log.Logger) error {
+	service := downloadPost.NewService(repo, cfg, logger)
 
 	err := downloadPosts(service, SOURCES_FILE)
 	if err != nil {

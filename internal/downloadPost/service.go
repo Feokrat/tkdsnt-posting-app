@@ -1,15 +1,16 @@
 package downloadPost
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/Feokrat/tkdsnt-posting-app/internal/config"
+	"github.com/Feokrat/tkdsnt-posting-app/internal/model"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path"
-
-	"github.com/Feokrat/tkdsnt-posting-app/internal/model"
 
 	url2 "net/url"
 
@@ -26,10 +27,21 @@ type Service interface {
 type service struct {
 	repo   Repository
 	logger *log.Logger
+	gelbooruAccessKey string
+	gelbooruUserId int
 }
 
-func NewService(repo Repository, logger *log.Logger) Service {
-	return service{repo, logger}
+type GelbooruPost struct {
+	Source string `xml:"post>source"`
+	FileUrl string `xml:"post>file_url"`
+}
+
+type GelbooruGetPostResponseType struct {
+	Posts [] GelbooruPost `xml:"posts"`
+}
+
+func NewService(repo Repository, cfg *config.Config, logger *log.Logger) Service {
+	return service{repo, logger, cfg.Posting.GelbooruAccessKey, cfg.Posting.GelbooruUserId}
 }
 
 func (s service) Post() error {
@@ -37,10 +49,28 @@ func (s service) Post() error {
 }
 
 func (s service) DownloadPost(sourceUrl string) ([]string, error) {
-	filenames, err := downloadTweet(sourceUrl)
-	if err != nil {
-		s.logger.Printf("error downloading post %s", sourceUrl)
-		return nil, err
+	url, err := url2.Parse(sourceUrl)
+
+	var filenames []string
+	var source string
+
+	switch url.Host {
+	case "twitter.com":
+		filenames, err = downloadTweet(sourceUrl)
+		if err != nil {
+			s.logger.Printf("error downloading post %s from twitter", sourceUrl)
+			return nil, err
+		}
+	case "gelbooru.com":
+		filenames, source, err = downloadGelbooru(sourceUrl, s.gelbooruAccessKey, s.gelbooruUserId)
+		if source != "" {
+			sourceUrl = source
+		}
+
+		if err != nil {
+			s.logger.Printf("error downloading post %s from gelbooru", sourceUrl)
+			return nil, err
+		}
 	}
 
 	post := model.DownloadedPost{
@@ -56,6 +86,45 @@ func (s service) DownloadPost(sourceUrl string) ([]string, error) {
 	}
 
 	return filenames, err
+}
+
+func downloadGelbooru(postLink string, accessKey string, userId int) ([]string, string, error) {
+	url, err := url2.Parse(postLink)
+	if err != nil {
+		return nil, "", err
+	}
+	m, err := url2.ParseQuery(url.RawQuery)
+	if err != nil {
+		return nil, "", err
+	}
+	postId := m["id"][0]
+
+	requestString := fmt.Sprintf("https://www.gelbooru.com/index.php?s=post&page=dapi&q=index&api_key=%s&user_id=%d&id=%s",
+		accessKey, userId, postId)
+
+	r, err := http.Get(requestString)
+	if err != nil {
+		return nil, "", err
+	}
+	defer r.Body.Close()
+
+	var response GelbooruPost
+	err = xml.NewDecoder(r.Body).Decode(&response)
+	if err != nil {
+		return nil, "", err
+	}
+	log.Printf("sourceUrl: %s, fileUrl: %s\n", response.Source, response.FileUrl)
+
+	var filenames []string
+	fileName := fmt.Sprintf("%s/gelbooru/%s.%s", DOWNLOAD_PATH, postId, response.FileUrl[len(response.FileUrl)-3:])
+	err = downloadFile(response.FileUrl, fileName)
+	if err != nil {
+		return nil, "", err
+	}
+	log.Printf("Downloaded image: %s\n", fileName)
+	filenames = append(filenames, fileName)
+
+	return filenames, response.Source, nil
 }
 
 func downloadTweet(tweetLink string) ([]string, error) {

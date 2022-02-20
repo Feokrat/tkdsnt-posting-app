@@ -29,6 +29,8 @@ type (
 	Posting struct {
 		AccessToken string `json:"access_token"`
 		GroupId     int    `json:"group_id"`
+		GelbooruAccessKey string `json:"gelbooru_access_key"`
+		GelbooruUserId int `json:"gelbooru_user_id"`
 	}
 )
 
@@ -53,6 +55,8 @@ func setFromEnv(cfg *Config) {
 	godotenv.Load(".env")
 	cfg.Posting.AccessToken = os.Getenv("ACCESS_TOKEN")
 	cfg.Posting.GroupId, _ = strconv.Atoi(os.Getenv("GROUP_ID"))
+	cfg.Posting.GelbooruAccessKey = os.Getenv("GELBOORU_ACCESS_KEY")
+	cfg.Posting.GelbooruUserId, _ = strconv.Atoi(os.Getenv("GELBOORU_USER_ID"))
 }
 
 func unmarshal(cfg *Config, logger *log.Logger) error {
